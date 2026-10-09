@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    /* Output: what JavaScript tsc produces */
+    "target": "ES2023", // Node 22+ supports ES2023 natively, so no down-leveling needed
+    "module": "NodeNext", // emit ES modules the way Node itself loads them
+    "moduleResolution": "NodeNext", // resolve imports with Node's real rules (must pair with module)
+    "rootDir": "src", // source lives in src/
+    "outDir": "dist", // compiled .js goes to dist/
+    "sourceMap": true, // error stack traces point at your .ts lines, not dist/*.js
+    "types": ["node"],
+
+    /* Module behavior */
+    "verbatimModuleSyntax": true, // forces `import type` for type-only imports (explained below)
+    "isolatedModules": true, // every file must compile on its own (required by tsx)
+    "esModuleInterop": true, // lets you default-import older CommonJS packages
+    "resolveJsonModule": true, // allows importing .json files
+
+    /* Strictness: the "nullable reference types + warnings as errors" of TypeScript */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true // don't type-check node_modules' .d.ts files (faster)
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

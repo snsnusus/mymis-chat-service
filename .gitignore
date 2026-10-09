@@ -1,0 +1,15 @@
+# Dependencies: always reinstalled from package-lock.json, never committed
+node_modules/
+
+# Build output: produced by `npm run build`, like bin/ and obj/ in .NET
+dist/
+
+# Local secrets: the repo is public, so real env files must never be committed
+.env
+.env.*
+# ...except the template, which documents the variables without real values
+!.env.example
+
+# Logs and test coverage output
+*.log
+coverage/
