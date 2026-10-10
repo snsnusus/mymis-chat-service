@@ -1,0 +1,20 @@
+{
+  // Any test, with the three AAA sections.
+  "Vitest AAA test": {
+    "scope": "typescript",
+    "prefix": "itaaa",
+    "description": "Vitest async test with Arrange / Act / Assert sections",
+    "body": [
+      "it(\"${1:does something}\", async () => {",
+      "\t// Arrange",
+      "\t$2",
+      "",
+      "\t// Act",
+      "\t$3",
+      "",
+      "\t// Assert",
+      "\t$0",
+      "});",
+    ],
+  },
+}
