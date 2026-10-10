@@ -3,6 +3,7 @@
 import eslint from "@eslint/js";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
+import globals from "globals";
 
 // "Flat config": the config is a plain array of objects, applied top to bottom.
 // Later objects override earlier ones for the files they match.
@@ -34,11 +35,15 @@ export default defineConfig(
     },
   },
 
-  // 6. Plain .js files (like this config itself) aren't part of tsconfig's "include",
-  //    so turn type-aware rules off for them; otherwise ESLint errors trying to type-check them.
+  // 6. Plain .js files (this config, scripts/*.js) aren't part of tsconfig's "include":
+  //    turn type-aware rules off for them, and tell ESLint they run in Node
+  //    so built-ins like process and console aren't reported as undefined.
   {
     files: ["**/*.js"],
     extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: {
+      globals: globals.node,
+    },
   },
 
   // 7. Our own additions on top of the presets.
