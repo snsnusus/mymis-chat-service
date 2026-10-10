@@ -17,7 +17,14 @@ const otherKey = new TextEncoder().encode(
 
 // exp as epoch seconds: 15 minutes ahead (like mymis-api), or 1 minute in the past.
 const nowSeconds = Math.floor(Date.now() / 1000);
-const exp = mode === "expired" ? nowSeconds - 60 : nowSeconds + 15 * 60;
+// exp as epoch seconds: 15 minutes ahead (like mymis-api), 20 seconds ahead ("short",
+// for testing expiry while connected), or 1 minute in the past ("expired").
+const exp =
+  mode === "expired"
+    ? nowSeconds - 60
+    : mode === "short"
+      ? nowSeconds + 20
+      : nowSeconds + 15 * 60;
 
 const token = await new SignJWT({ name: `user${userId}`, role: "User" })
   .setProtectedHeader({ alg: "HS256", typ: "JWT" })

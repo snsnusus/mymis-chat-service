@@ -5,6 +5,7 @@ import { loadConfig } from "./config.js";
 import { createPresenceStore } from "./presence.js";
 import { connectRedis } from "./redis.js";
 import { createChatServer } from "./server.js";
+import { createTokenVerifier } from "./auth.js";
 
 // How long a graceful shutdown may take before we force the process to exit.
 const SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -19,6 +20,8 @@ const config = loadConfig(process.env);
 console.log("[mymis-chat-service] connecting to Redis...");
 const redis = await connectRedis(config);
 const presence = createPresenceStore(redis);
+// Built once from config: the signing key is encoded a single time, not per connection.
+const verifyToken = createTokenVerifier(config.jwt);
 
 // Stale presence: while this service runs as a SINGLE instance, it owns every live connection.
 // Any counts already in Redis belong to connections that died with a previous run (a crash,
@@ -27,7 +30,7 @@ const presence = createPresenceStore(redis);
 // wipe the others' counts. That needs per-instance tracking and is part of the M6 design.
 await presence.reset();
 
-const { httpServer, wss } = createChatServer(config, presence);
+const { httpServer, wss } = createChatServer(config, presence, verifyToken);
 
 httpServer.listen(config.port, () => {
   console.log(

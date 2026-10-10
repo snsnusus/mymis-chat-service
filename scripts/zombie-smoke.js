@@ -5,7 +5,7 @@
 
 import WebSocket from "ws";
 
-const userId = process.argv[2] ?? "99";
+const token = process.argv[2]; // replaces the userId line; usage: zombie-smoke.js <token> [url]
 const url = process.argv[3] ?? "ws://localhost:4000";
 
 // autoPong: false = don't answer pings automatically. Normal clients (and every browser)
@@ -19,8 +19,7 @@ const ws = new WebSocket(url, {
 const now = () => new Date().toISOString().slice(11, 19); // e.g. "09:41:05"
 
 ws.on("open", () => {
-  console.log(`${now()} connected as user ${userId}; will ignore pings`);
-  ws.send(JSON.stringify({ type: "REGISTER_PRESENCE", userId }));
+  ws.send(JSON.stringify({ type: "AUTH", token }));
 });
 
 ws.on("ping", () => console.log(`${now()} ping received (not answering)`));
