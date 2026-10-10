@@ -6,6 +6,7 @@ const envSchema = z
       .enum(["development", "test", "production"])
       .default("development"),
     PORT: z.coerce.number().int().min(1).max(65535).default(4000),
+    HEARTBEAT_INTERVAL_MS: z.coerce.number().int().min(1000).default(30_000),
     REDIS_URL: z.url(),
     MONGO_URL: z.url(),
     ALLOWED_ORIGINS: z
@@ -24,6 +25,7 @@ const envSchema = z
   .transform((e) => ({
     nodeEnv: e.NODE_ENV,
     port: e.PORT,
+    heartbeatIntervalMs: e.HEARTBEAT_INTERVAL_MS,
     redisUrl: e.REDIS_URL,
     mongoUrl: e.MONGO_URL,
     allowedOrigins: e.ALLOWED_ORIGINS,

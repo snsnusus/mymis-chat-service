@@ -33,7 +33,11 @@ export function createChatServer(
   const app = express();
 
   app.get("/health", (_req, res) => {
-    res.json({ status: "ok" });
+    if (presence.isAvailable()) {
+      res.json({ status: "ok", redis: "up" });
+    } else {
+      res.status(503).json({ status: "unavailable", redis: "down" });
+    }
   });
 
   const httpServer = createServer(app);
@@ -55,6 +59,37 @@ export function createChatServer(
     }
   }
 
+  // ── Heartbeat ──
+  // Tracks whether each socket answered the last ping.
+  // A WeakMap holds its keys "weakly": once a socket is gone and nothing else references it,
+  // its entry disappears with it during garbage collection, so closed sockets never leak memory.
+  const isAlive = new WeakMap<WebSocket, boolean>();
+
+  // Every interval: terminate sockets that missed the previous ping, ping all the others.
+  const heartbeat = setInterval(() => {
+    for (const client of wss.clients) {
+      // === false (not !isAlive.get(...)): undefined means "never tracked", which isn't the
+      // same as "missed a ping", so only an explicit false counts as dead.
+      if (isAlive.get(client) === false) {
+        console.warn("[ws] heartbeat missed, terminating connection");
+        // terminate(): destroy the connection now, no close handshake (the peer isn't there
+        // to answer one). It still fires the socket's 'close' event, so presence is
+        // decremented by the existing close handler.
+        client.terminate();
+        continue;
+      }
+      // Assume dead until a pong proves otherwise.
+      isAlive.set(client, false);
+      client.ping();
+    }
+  }, config.heartbeatIntervalMs);
+
+  // Stop the timer when the WebSocket server shuts down, so it doesn't keep the process alive
+  // or run against a closed server. (Used by tests in M4 and by graceful shutdown in 6c.)
+  wss.on("close", () => {
+    clearInterval(heartbeat);
+  });
+
   httpServer.on("upgrade", (request, socket, head) => {
     const origin = request.headers.origin;
 
@@ -73,6 +108,14 @@ export function createChatServer(
 
   wss.on("connection", (ws: WebSocket) => {
     console.log(`[ws] client connected (total: ${wss.clients.size})`);
+
+    // A brand-new socket is alive by definition.
+    isAlive.set(ws, true);
+
+    // The client answered a ping: mark it alive for the next heartbeat round.
+    ws.on("pong", () => {
+      isAlive.set(ws, true);
+    });
 
     // Per-connection state: which user this socket registered as.
     // Declared inside this callback, so each socket gets its own copy.

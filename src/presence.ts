@@ -37,6 +37,19 @@ export function createPresenceStore(redis: RedisClient) {
         .filter(([, count]) => Number(count) > 0)
         .map(([userId]) => userId);
     },
+
+    // Startup only: delete all connection counts. See index.ts for why this is safe
+    // with a single instance (and why it won't be once there are several).
+    async reset(): Promise<void> {
+      // DEL removes the whole key (the entire hash) in one command.
+      await redis.del(CONNECTIONS_KEY);
+    },
+
+    // Whether the Redis connection is currently usable. isReady is a property the client
+    // keeps up to date: false while connecting, reconnecting, or after it's closed.
+    isAvailable(): boolean {
+      return redis.isReady;
+    },
   };
 }
 

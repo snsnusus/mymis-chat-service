@@ -17,10 +17,7 @@ export type RedisClient = ReturnType<typeof buildClient>;
 export async function connectRedis(config: Config): Promise<RedisClient> {
   const client = buildClient(config.redisUrl);
 
-  // Called on every failed connection attempt (the client retries on its own) and on any later
-  // connection error. Log ONE line per failure instead of a full stack trace, so repeated
-  // retries stay readable. A refused localhost connection arrives as an AggregateError
-  // (IPv6 + IPv4 both failed) with an empty message, so prefer its code (e.g. ECONNREFUSED).
+  // 1. KEEP THIS: without an 'error' listener, any Redis disconnect crashes the process.
   client.on("error", (error: Error) => {
     const code =
       "code" in error && typeof error.code === "string"
@@ -31,10 +28,16 @@ export async function connectRedis(config: Config): Promise<RedisClient> {
     );
   });
 
-  // connect() opens the TCP connection. It's async, so callers must await it
-  // before sending commands.
+  // 2. NEW: logs the first connection and every reconnect.
+  let hasConnectedBefore = false;
+  client.on("ready", () => {
+    console.log(
+      hasConnectedBefore ? "[redis] connection resumed" : "[redis] connected",
+    );
+    hasConnectedBefore = true;
+  });
+
   await client.connect();
-  console.log("[redis] connected");
 
   return client;
 }
