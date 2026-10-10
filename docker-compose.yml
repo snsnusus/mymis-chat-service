@@ -1,0 +1,48 @@
+# Local development datastores for mymis-chat-service.
+# Start:  docker compose up -d      Stop: docker compose down
+# The chat service itself runs on your machine via `npm run dev`, not in Docker (yet).
+
+# Project name: prefixes the containers and volumes (e.g. mymis-chat-redis-1),
+# so they don't clash with the portal's my-redis container.
+name: mymis-chat
+
+services:
+  # ── Redis: presence (who is online, connection counts). Ephemeral by design. ──
+  redis:
+    image: redis:8-alpine # official Redis 8 image, Alpine = small Linux base
+    ports:
+      # "HOST_IP:HOST_PORT:CONTAINER_PORT"
+      # 127.0.0.1 = only reachable from this PC, not from other devices on your Wi-Fi.
+      # 6380 on your PC → 6379 inside the container (avoids the portal's my-redis on 6379).
+      - "127.0.0.1:6380:6379"
+    healthcheck:
+      # Docker runs this command inside the container; exit code 0 = healthy.
+      test: ["CMD", "redis-cli", "ping"] # replies PONG when Redis is ready
+      interval: 5s # check every 5 seconds
+      timeout: 3s # a single check fails if it takes longer
+      retries: 5 # unhealthy after 5 failures in a row
+    # No volume on purpose: presence data is rebuilt as users reconnect,
+    # so losing it on restart is correct, not a bug.
+
+  # ── MongoDB: durable chat messages. ──
+  mongo:
+    image: mongo:8 # official MongoDB 8 image
+    ports:
+      - "127.0.0.1:27018:27017" # 27018 on your PC → 27017 inside (avoids any local Mongo)
+    volumes:
+      # "VOLUME_NAME:PATH_INSIDE_CONTAINER"
+      # /data/db is where MongoDB stores its files; the named volume keeps them
+      # alive across `docker compose down` and container re-creation.
+      - mongo-data:/data/db
+    healthcheck:
+      # mongosh is Mongo's shell; the ping command returns 1 when the server accepts queries.
+      test:
+        ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s # grace period on first boot (Mongo initializes its files)
+
+# Named volumes are declared here; Docker creates and manages the storage itself.
+volumes:
+  mongo-data:
