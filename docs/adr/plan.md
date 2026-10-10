@@ -52,3 +52,4 @@ Each milestone ends with something runnable and committed. Check items off as yo
 - [ ] Redis pub/sub for multi-instance scale-out
 - [ ] Rebuild OTP in `mymis-api`
 - [ ] Update resume Node entry and cover letter when M4 is done
+- [ ] Allow messaging yourself (self-notes): rooms like `1-1` in `roomIdFor`/`parseRoomId`, flip the three same-user tests, remove the self-message check in `server.ts`, de-duplicate recipients in `sendToUsers` (otherwise a self-message is delivered twice)
