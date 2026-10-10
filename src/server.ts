@@ -94,12 +94,14 @@ export function createChatServer(
             return;
           }
           registeredUserId = message.userId;
-          await presence.markOnline(message.userId);
-          broadcast({
-            type: "USER_STATUS_CHANGE",
-            userId: message.userId,
-            status: "online",
-          });
+          const cameOnline = await presence.addConnection(message.userId);
+          if (cameOnline) {
+            broadcast({
+              type: "USER_STATUS_CHANGE",
+              userId: message.userId,
+              status: "online",
+            });
+          }
           return;
         }
 
@@ -149,9 +151,15 @@ export function createChatServer(
 
       // Same pattern: a promise chain with .catch(), because this listener isn't async.
       presence
-        .markOffline(userId)
-        .then(() => {
-          broadcast({ type: "USER_STATUS_CHANGE", userId, status: "offline" });
+        .removeConnection(userId)
+        .then((wentOffline) => {
+          if (wentOffline) {
+            broadcast({
+              type: "USER_STATUS_CHANGE",
+              userId,
+              status: "offline",
+            });
+          }
         })
         .catch((error: unknown) => {
           console.error("[ws] failed to mark user offline:", error);
