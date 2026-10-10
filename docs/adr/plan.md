@@ -18,7 +18,7 @@ Each milestone ends with something runnable and committed. Check items off as yo
 - [x] `docker-compose.yml`: service + Redis + Mongo
 - [x] Config module reading env vars (+ `.env.example`, `.env` git-ignored)
 - [x] `ws` server + the four existing presence messages
-- [ ] Connection counting (fix multi-tab bug) + heartbeat
+- [x] Connection counting (fix multi-tab bug) + heartbeat
       **Done when:** the portal protocol works against the new service in a manual test (portal still untouched; test with a small script).
 
 ## M2: JWT authentication
