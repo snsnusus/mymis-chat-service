@@ -1,4 +1,5 @@
-import { ObjectId, type Collection, type Db } from "mongodb";
+import { ObjectId, type Collection, type Db, type Filter } from "mongodb";
+import { z } from "zod";
 import type { ChatMessage } from "./protocol.js";
 
 export interface MessageDocument {
@@ -54,6 +55,38 @@ export function createMessageStore(db: Db) {
       await messages.insertOne(document);
       return document;
     },
+
+    // One page of a room's history, newest first. `before` is the cursor from the previous
+    // page (null for the first page). Fetches limit + 1 rows to learn whether more exist.
+    async findHistory(
+      roomId: string,
+      before: HistoryCursor | null,
+      limit: number,
+    ): Promise<{ documents: MessageDocument[]; hasMore: boolean }> {
+      // Filter<MessageDocument> is the driver's typed query shape: field names and
+      // operators ($lt, $or...) are checked against your document type.
+      const filter: Filter<MessageDocument> = { roomId };
+
+      if (before !== null) {
+        // "Older than the cursor", in the exact order of the index (createdAt, then _id).
+        filter.$or = [
+          { createdAt: { $lt: before.createdAt } },
+          { createdAt: before.createdAt, _id: { $lt: before.id } },
+        ];
+      }
+
+      const documents = await messages
+        .find(filter)
+        .sort({ createdAt: -1, _id: -1 }) // matches the index, so no in-memory sort
+        .limit(limit + 1)
+        .toArray();
+
+      const hasMore = documents.length > limit;
+      return {
+        documents: hasMore ? documents.slice(0, limit) : documents,
+        hasMore,
+      };
+    },
   };
 }
 
@@ -71,4 +104,47 @@ export function toChatMessage(document: MessageDocument): ChatMessage {
     text: document.text,
     createdAt: document.createdAt.toISOString(),
   };
+}
+
+// The position after which the next history page starts: the oldest message of the
+// previous page. Both fields are needed because two messages can share a createdAt.
+export interface HistoryCursor {
+  createdAt: Date;
+  id: ObjectId;
+}
+
+// What's inside an encoded cursor. Short keys keep the cursor string short.
+const cursorSchema = z.object({
+  t: z.number().int().nonnegative(), // createdAt as milliseconds since epoch
+  id: z.string().regex(/^[0-9a-f]{24}$/), // an ObjectId: exactly 24 hex characters
+});
+
+// Packs a message's position into an opaque string: JSON, then base64url.
+// base64url (unlike plain base64) uses only URL-safe characters, so the cursor
+// can go straight into a query string without escaping.
+export function encodeCursor(document: MessageDocument): string {
+  const json = JSON.stringify({
+    t: document.createdAt.getTime(),
+    id: document._id.toHexString(),
+  });
+  return Buffer.from(json, "utf8").toString("base64url");
+}
+
+// Unpacks a cursor from a URL. Untrusted input, so: never throws, returns null for
+// anything that isn't a cursor this server produced in the expected shape.
+export function decodeCursor(cursor: string): HistoryCursor | null {
+  try {
+    const json = Buffer.from(cursor, "base64url").toString("utf8");
+    const raw: unknown = JSON.parse(json);
+    const parsed = cursorSchema.safeParse(raw);
+    if (!parsed.success) {
+      return null;
+    }
+    return {
+      createdAt: new Date(parsed.data.t),
+      id: new ObjectId(parsed.data.id),
+    };
+  } catch {
+    return null; // not base64url, or not JSON
+  }
 }
