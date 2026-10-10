@@ -2,11 +2,25 @@
 // It does NOT start listening; index.ts does that.
 
 import { createServer, type Server } from "node:http";
-import express from "express";
+import express, { type ErrorRequestHandler, type Request } from "express";
+import cors from "cors";
+import { z } from "zod";
+import type {
+  AuthenticatedUser,
+  TokenVerificationResult,
+  TokenVerifier,
+} from "./auth.js";
+import {
+  decodeCursor,
+  encodeCursor,
+  toChatMessage,
+  type HistoryCursor,
+  type MessageStore,
+} from "./messages.js";
+import { isRoomMember, parseRoomId, roomIdFor } from "./rooms.js";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
-import type { AuthenticatedUser, TokenVerifier } from "./auth.js";
-import type { Config } from "./config.js";
-import type { PresenceStore } from "./presence.js";
+import { type Config } from "./config.js";
+import { type PresenceStore } from "./presence.js";
 import {
   CloseCode,
   parseClientMessage,
@@ -14,11 +28,17 @@ import {
   type ServerMessage,
 } from "./protocol.js";
 import type { MongoConnection } from "./mongo.js";
-import { toChatMessage, type MessageStore } from "./messages.js";
-import { roomIdFor } from "./rooms.js";
 
 // Largest WebSocket message we accept, in bytes (ws closes with 1009 if exceeded).
 const MAX_MESSAGE_BYTES = 16 * 1024;
+
+// Query string of the history route. Values in a query string are always strings,
+// hence coerce for limit. (A repeated parameter like ?limit=1&limit=2 arrives as an
+// array, which these rules reject.)
+const historyQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+  before: z.string().min(1).optional(),
+});
 
 // How long a new connection may stay unauthenticated before it's closed (ADR-0005).
 const AUTH_TIMEOUT_MS = 5_000;
@@ -47,6 +67,22 @@ export function createChatServer(deps: ChatServerDeps): ChatServer {
   // ── HTTP side ──
   const app = express();
 
+  // Lets the portal (an allowed origin) call these routes from the browser.
+  // Answers preflight OPTIONS requests too.
+  app.use(cors({ origin: config.allowedOrigins }));
+
+  // Reads "Authorization: Bearer <token>" and verifies it with the same verifier the
+  // sockets use. A missing or malformed header counts as an invalid token.
+  async function authenticateRequest(
+    req: Request,
+  ): Promise<TokenVerificationResult> {
+    const header = req.headers.authorization;
+    if (!header?.startsWith("Bearer ")) {
+      return { ok: false, reason: "invalid" };
+    }
+    return verifyToken(header.slice("Bearer ".length));
+  }
+
   app.get("/health", async (_req, res) => {
     const isPresenceAvailable = presence.isAvailable();
     const isMongoAvailable = await mongo.isAvailable();
@@ -59,6 +95,73 @@ export function createChatServer(deps: ChatServerDeps): ChatServer {
         .json({ status: "unavailable", redis: "down", mongo: "down" });
     }
   });
+
+  // One page of a conversation's history, newest first.
+  app.get("/conversations/:roomId/messages", async (req, res) => {
+    // 1. Authenticate. 401 = "who are you?". 'token_expired' lets the portal's axios
+    //    interceptor refresh and retry, the same contract as mymis-api.
+    const auth = await authenticateRequest(req);
+    if (!auth.ok) {
+      res.status(401).json({
+        error: auth.reason === "expired" ? "token_expired" : "unauthorized",
+      });
+      return;
+    }
+
+    // 2. The room id from the URL (:roomId). Express 5's types infer req.params.roomId
+    //    as a string from the route pattern itself.
+    const { roomId } = req.params;
+    if (parseRoomId(roomId) === null) {
+      res.status(400).json({ error: "invalid_room_id" });
+      return;
+    }
+
+    // 3. Membership. 403 = "I know who you are, and this isn't yours".
+    if (!isRoomMember(roomId, auth.user.userId)) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
+
+    // 4. Query string.
+    const query = historyQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      res.status(400).json({ error: "invalid_query" });
+      return;
+    }
+
+    // An absent cursor means "first page"; a present but undecodable one is an error,
+    // NOT silently treated as the first page (that would hide client bugs).
+    let before: HistoryCursor | null = null;
+    if (query.data.before !== undefined) {
+      before = decodeCursor(query.data.before);
+      if (before === null) {
+        res.status(400).json({ error: "invalid_cursor" });
+        return;
+      }
+    }
+
+    // 5. Query, and build the next cursor from the OLDEST message on this page.
+    const { documents, hasMore } = await messageStore.findHistory(
+      roomId,
+      before,
+      query.data.limit,
+    );
+    const oldest = documents.at(-1); // .at(-1) = last element (undefined if the array is empty)
+
+    res.json({
+      messages: documents.map(toChatMessage),
+      nextCursor: hasMore && oldest !== undefined ? encodeCursor(oldest) : null,
+    });
+  });
+
+  // Registered AFTER the routes. Express 5 sends any error thrown (or rejected) in a
+  // route here. Without it, Express replies with an HTML page that can include a stack trace.
+  // The four parameters are what mark it as an error handler, even when unused.
+  const errorHandler: ErrorRequestHandler = (error, _req, res) => {
+    console.error("[http] unhandled error:", error);
+    res.status(500).json({ error: "internal_error" });
+  };
+  app.use(errorHandler);
 
   const httpServer = createServer(app);
 
