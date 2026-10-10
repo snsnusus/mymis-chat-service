@@ -1,0 +1,6 @@
+{
+  // Inherit every compiler option from the main config...
+  "extends": "./tsconfig.json",
+  // ...but leave test files out of the production build.
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+}
