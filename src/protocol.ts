@@ -1,13 +1,31 @@
 import { z } from "zod";
 
+export interface ChatMessage {
+  id: string;
+  roomId: string;
+  senderId: string;
+  recipientId: string;
+  text: string;
+  createdAt: string;
+}
+
+export const MAX_MESSAGE_LENGTH = 2000;
+
 export const clientMessageSchema = z.discriminatedUnion("type", [
-  // Shape A: { type: "AUTH", token: ... }
   z.object({
     type: z.literal("AUTH"),
     token: z.string().min(1),
   }),
   z.object({
     type: z.literal("GET_INITIAL_PRESENCE"),
+  }),
+  z.object({
+    type: z.literal("SEND_MESSAGE"),
+    recipientId: z
+      .union([z.string(), z.number()])
+      .transform((value) => String(value))
+      .pipe(z.string().min(1)),
+    text: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
   }),
 ]);
 
@@ -30,6 +48,7 @@ export function parseClientMessage(text: string): ClientMessage | null {
 }
 
 export type ServerMessage =
+  | { type: "MESSAGE"; message: ChatMessage }
   | { type: "AUTH_OK"; userId: string }
   | { type: "INITIAL_PRESENCE_LIST"; userIds: string[] }
   | { type: "USER_STATUS_CHANGE"; userId: string; status: "online" | "offline" }

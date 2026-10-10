@@ -56,6 +56,7 @@ const { httpServer, wss } = createChatServer({
   presence,
   verifyToken,
   mongo,
+  messageStore,
 });
 
 httpServer.listen(config.port, () => {

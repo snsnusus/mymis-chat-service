@@ -14,6 +14,8 @@ import {
   type ServerMessage,
 } from "./protocol.js";
 import type { MongoConnection } from "./mongo.js";
+import { toChatMessage, type MessageStore } from "./messages.js";
+import { roomIdFor } from "./rooms.js";
 
 // Largest WebSocket message we accept, in bytes (ws closes with 1009 if exceeded).
 const MAX_MESSAGE_BYTES = 16 * 1024;
@@ -33,6 +35,7 @@ export interface ChatServerDeps {
   presence: PresenceStore;
   verifyToken: TokenVerifier;
   mongo: Pick<MongoConnection, "isAvailable">;
+  messageStore: MessageStore;
 }
 
 // Three injected dependencies now: config, presence storage, and token verification.
@@ -40,7 +43,7 @@ export interface ChatServerDeps {
 export function createChatServer(deps: ChatServerDeps): ChatServer {
   // Destructuring keeps the rest of the function unchanged: it still uses
   // config, presence and verifyToken as plain variables.
-  const { config, presence, verifyToken, mongo } = deps;
+  const { config, presence, verifyToken, mongo, messageStore } = deps;
   // ── HTTP side ──
   const app = express();
 
@@ -75,6 +78,46 @@ export function createChatServer(deps: ChatServerDeps): ChatServer {
     for (const client of authenticatedSockets) {
       if (client.readyState === WebSocket.OPEN) {
         client.send(payload);
+      }
+    }
+  }
+
+  // Every open, authenticated socket of each user (one per tab or device).
+  // Used to deliver a chat message to exactly the people in the conversation.
+  const socketsByUser = new Map<string, Set<WebSocket>>();
+
+  function trackUserSocket(userId: string, ws: WebSocket): void {
+    let sockets = socketsByUser.get(userId);
+    if (sockets === undefined) {
+      sockets = new Set();
+      socketsByUser.set(userId, sockets);
+    }
+    sockets.add(ws);
+  }
+
+  function untrackUserSocket(userId: string, ws: WebSocket): void {
+    const sockets = socketsByUser.get(userId);
+    if (sockets === undefined) {
+      return;
+    }
+    sockets.delete(ws);
+    // Remove the user's entry once their last socket is gone, so the map
+    // only ever holds connected users (no slow memory leak of empty sets).
+    if (sockets.size === 0) {
+      socketsByUser.delete(userId);
+    }
+  }
+
+  // Sends one message to every open socket of the given users.
+  // Serialized once, then sent to each socket.
+  function sendToUsers(userIds: string[], message: ServerMessage): void {
+    const payload = JSON.stringify(message);
+    for (const userId of userIds) {
+      // ?? [] : a user with no sockets (offline) simply gets nothing.
+      for (const socket of socketsByUser.get(userId) ?? []) {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(payload);
+        }
       }
     }
   }
@@ -168,6 +211,7 @@ export function createChatServer(deps: ChatServerDeps): ChatServer {
       clearTimeout(authTimer);
       user = authedUser;
       authenticatedSockets.add(ws);
+      trackUserSocket(authedUser.userId, ws);
 
       // Close the socket when the token expires. Math.max guards against a token that
       // expires in the few milliseconds between verification and here.
@@ -208,6 +252,10 @@ export function createChatServer(deps: ChatServerDeps): ChatServer {
         return;
       }
 
+      // Authenticated from here on. A const copy keeps the narrowed type stable
+      // across the awaits below.
+      const sender = user;
+
       // Authenticated.
       switch (message.type) {
         case "AUTH": {
@@ -221,6 +269,44 @@ export function createChatServer(deps: ChatServerDeps): ChatServer {
         case "GET_INITIAL_PRESENCE": {
           const userIds = await presence.listOnline();
           send(ws, { type: "INITIAL_PRESENCE_LIST", userIds });
+          return;
+        }
+
+        case "SEND_MESSAGE": {
+          const { recipientId, text } = message;
+
+          // Messaging yourself isn't a conversation (and roomIdFor would throw).
+          if (recipientId === sender.userId) {
+            send(ws, {
+              type: "ERROR",
+              message: "You cannot send a message to yourself",
+            });
+            return;
+          }
+
+          // A "-" would make the room id ambiguous (and roomIdFor would throw).
+          if (recipientId.includes("-")) {
+            send(ws, { type: "ERROR", message: "Invalid recipient" });
+            return;
+          }
+
+          // senderId comes from the TOKEN (sender.userId), never from the message:
+          // a client can't send a message in someone else's name.
+          const saved = await messageStore.insert({
+            roomId: roomIdFor(sender.userId, recipientId),
+            senderId: sender.userId,
+            recipientId,
+            text,
+          });
+
+          // Deliver to both participants' sockets ONLY. The sender's copy confirms the
+          // message was saved (with its server-assigned id and time) and keeps their other
+          // tabs in sync. If the recipient is offline, the message waits in MongoDB
+          // and comes back through the history endpoint (Step 5).
+          sendToUsers([sender.userId, recipientId], {
+            type: "MESSAGE",
+            message: toChatMessage(saved),
+          });
           return;
         }
       }
@@ -268,6 +354,8 @@ export function createChatServer(deps: ChatServerDeps): ChatServer {
       if (closedUser === null) {
         return; // never authenticated, so it was never counted
       }
+
+      untrackUserSocket(closedUser.userId, ws);
 
       presence
         .removeConnection(closedUser.userId)
