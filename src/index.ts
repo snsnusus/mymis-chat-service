@@ -4,6 +4,7 @@
 import { loadConfig } from "./config.js";
 import { createPresenceStore } from "./presence.js";
 import { connectRedis } from "./redis.js";
+import { connectMongo, type MongoConnection } from "./mongo.js";
 import { createChatServer } from "./server.js";
 import { createTokenVerifier } from "./auth.js";
 
@@ -19,6 +20,21 @@ const config = loadConfig(process.env);
 // Logged first, so a Redis outage at startup reads as "waiting" rather than silence.
 console.log("[mymis-chat-service] connecting to Redis...");
 const redis = await connectRedis(config);
+console.log("[mymis-chat-service] connecting to MongoDB...");
+
+// connectMongo throws if MongoDB is unreachable at startup (after serverSelectionTimeoutMS).
+// Catch it to fail CLEANLY: one readable line instead of the driver's full error object,
+// close the Redis connection that's already open, and exit with code 1 (failure).
+let mongo: MongoConnection;
+try {
+  mongo = await connectMongo(config);
+} catch (error) {
+  const reason = error instanceof Error ? error.message : "unknown error";
+  console.error(`[mongo] could not connect at startup: ${reason}`);
+  await redis.close();
+  process.exit(1);
+}
+
 const presence = createPresenceStore(redis);
 // Built once from config: the signing key is encoded a single time, not per connection.
 const verifyToken = createTokenVerifier(config.jwt);
@@ -30,7 +46,12 @@ const verifyToken = createTokenVerifier(config.jwt);
 // wipe the others' counts. That needs per-instance tracking and is part of the M6 design.
 await presence.reset();
 
-const { httpServer, wss } = createChatServer(config, presence, verifyToken);
+const { httpServer, wss } = createChatServer({
+  config,
+  presence,
+  verifyToken,
+  mongo,
+});
 
 httpServer.listen(config.port, () => {
   console.log(
@@ -78,6 +99,8 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
 
   // 4. Disconnect Redis last, after everything that might still use it.
   await redis.close();
+  // 5. Close the MongoDB connection pool, last, like Redis.
+  await mongo.client.close();
 
   console.log("[mymis-chat-service] shutdown complete");
   // No process.exit() here on purpose: with the server, timers and Redis closed, Node has

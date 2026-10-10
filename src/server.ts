@@ -13,6 +13,7 @@ import {
   type ClientMessage,
   type ServerMessage,
 } from "./protocol.js";
+import type { MongoConnection } from "./mongo.js";
 
 // Largest WebSocket message we accept, in bytes (ws closes with 1009 if exceeded).
 const MAX_MESSAGE_BYTES = 16 * 1024;
@@ -25,21 +26,34 @@ export interface ChatServer {
   wss: WebSocketServer;
 }
 
+// Everything the server needs from the outside, passed as one object.
+// Adding a dependency means adding a property here, not reordering parameters.
+export interface ChatServerDeps {
+  config: Config;
+  presence: PresenceStore;
+  verifyToken: TokenVerifier;
+  mongo: Pick<MongoConnection, "isAvailable">;
+}
+
 // Three injected dependencies now: config, presence storage, and token verification.
 // Tests can pass a fake verifier that "accepts" any token without real JWTs.
-export function createChatServer(
-  config: Config,
-  presence: PresenceStore,
-  verifyToken: TokenVerifier,
-): ChatServer {
+export function createChatServer(deps: ChatServerDeps): ChatServer {
+  // Destructuring keeps the rest of the function unchanged: it still uses
+  // config, presence and verifyToken as plain variables.
+  const { config, presence, verifyToken, mongo } = deps;
   // ── HTTP side ──
   const app = express();
 
-  app.get("/health", (_req, res) => {
-    if (presence.isAvailable()) {
-      res.json({ status: "ok", redis: "up" });
+  app.get("/health", async (_req, res) => {
+    const isPresenceAvailable = presence.isAvailable();
+    const isMongoAvailable = await mongo.isAvailable();
+
+    if (isPresenceAvailable && isMongoAvailable) {
+      res.json({ status: "ok", redis: "up", mongo: "up" });
     } else {
-      res.status(503).json({ status: "unavailable", redis: "down" });
+      res
+        .status(503)
+        .json({ status: "unavailable", redis: "down", mongo: "down" });
     }
   });
 
