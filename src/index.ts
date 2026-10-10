@@ -1,4 +1,6 @@
 import { loadConfig } from "./config.js";
+import { createPresenceStore } from "./presence.js";
+import { connectRedis } from "./redis.js";
 import { createChatServer } from "./server.js";
 
 // Entry point: loads and validates config, then (in later steps) starts the server.
@@ -10,7 +12,10 @@ const nodeVersion: string = process.version;
 const bootedAt: string = new Date().toISOString();
 
 const config = loadConfig(process.env);
-const { httpServer } = createChatServer(config);
+const redis = await connectRedis(config);
+const presence = createPresenceStore(redis);
+
+const { httpServer } = createChatServer(config, presence);
 
 // listen() starts accepting connections; the callback runs once the port is bound.
 httpServer.listen(config.port, () => {
