@@ -23,9 +23,9 @@ Each milestone ends with something runnable and committed. Check items off as yo
 
 ## M2: JWT authentication
 
-- [ ] `AUTH` first-message flow, timeout, close codes
-- [ ] Identity comes from token; remove `userId` trust
-- [ ] Unit tests for token validation (valid, expired, wrong signature, wrong audience)
+- [x] `AUTH` first-message flow, timeout, close codes
+- [x] Identity comes from token; remove `userId` trust
+- [x] Unit tests for token validation (valid, expired, wrong signature, wrong audience)
 
 ## M3: Rooms + MongoDB persistence
 
@@ -35,7 +35,7 @@ Each milestone ends with something runnable and committed. Check items off as yo
 
 ## M4: Tests + CI
 
-- [ ] Jest/Supertest + ws client tests, Testcontainers for Redis/Mongo
+- [ ] Vitest/Supertest + ws client tests, Testcontainers for Redis/Mongo
 - [ ] GitHub Actions on `pull_request`
 - [ ] README with architecture diagram and run instructions
 
