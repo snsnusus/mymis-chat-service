@@ -7,6 +7,7 @@ import { connectRedis } from "./redis.js";
 import { connectMongo, type MongoConnection } from "./mongo.js";
 import { createChatServer } from "./server.js";
 import { createTokenVerifier } from "./auth.js";
+import { createMessageStore } from "./messages.js";
 
 // How long a graceful shutdown may take before we force the process to exit.
 const SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -34,6 +35,10 @@ try {
   await redis.close();
   process.exit(1);
 }
+
+// Make sure the indexes the queries depend on exist before accepting any connection.
+const messageStore = createMessageStore(mongo.db);
+await messageStore.ensureIndexes();
 
 const presence = createPresenceStore(redis);
 // Built once from config: the signing key is encoded a single time, not per connection.
