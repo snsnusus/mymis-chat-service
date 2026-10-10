@@ -1,7 +1,7 @@
 // Creates and connects the single Redis client the whole service shares.
 
 import { createClient } from "redis";
-import type { Config } from "./config.js";
+import type { Config } from "../config.js";
 
 // A tiny NON-generic wrapper around createClient. createClient itself is generic, so
 // ReturnType<typeof createClient> would give the widest possible client type, which doesn't

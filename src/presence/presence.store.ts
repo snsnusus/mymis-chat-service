@@ -1,7 +1,7 @@
 // Presence storage: who is online. The rest of the service talks to this,
 // never to Redis directly, so the storage details live in one place.
 
-import type { RedisClient } from "./redis.js";
+import type { RedisClient } from "../infrastructure/redis.js";
 
 // A Redis HASH: field = userId, value = number of currently open connections for that user.
 // Counting connections (instead of a plain set of users) is what makes multiple tabs work:

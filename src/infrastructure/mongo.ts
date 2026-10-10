@@ -1,7 +1,7 @@
 // Creates and connects the single MongoDB client the whole service shares.
 
 import { MongoClient, type Db } from "mongodb";
-import type { Config } from "./config.js";
+import type { Config } from "../config.js";
 
 export interface MongoConnection {
   client: MongoClient; // needed for close() at shutdown

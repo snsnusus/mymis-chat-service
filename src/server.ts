@@ -1,33 +1,34 @@
 // Builds the HTTP server (Express routes) and the WebSocket server, sharing one port.
 // It does NOT start listening; index.ts does that.
 
-import { createServer, type Server } from "node:http";
-import express, { type ErrorRequestHandler, type Request } from "express";
 import cors from "cors";
+import express, { type ErrorRequestHandler, type Request } from "express";
+import { createServer, type Server } from "node:http";
+import { WebSocket, WebSocketServer, type RawData } from "ws";
 import { z } from "zod";
+
+import { type Config } from "./config.js";
 import type {
   AuthenticatedUser,
   TokenVerificationResult,
   TokenVerifier,
-} from "./auth.js";
+} from "./auth/token.verifier.js";
 import {
   decodeCursor,
   encodeCursor,
   toChatMessage,
   type HistoryCursor,
   type MessageStore,
-} from "./messages.js";
-import { isRoomMember, parseRoomId, roomIdFor } from "./rooms.js";
-import { WebSocket, WebSocketServer, type RawData } from "ws";
-import { type Config } from "./config.js";
-import { type PresenceStore } from "./presence.js";
+} from "./chat/message.store.js";
+import { isRoomMember, parseRoomId, roomIdFor } from "./chat/rooms.js";
+import type { MongoConnection } from "./infrastructure/mongo.js";
+import { type PresenceStore } from "./presence/presence.store.js";
 import {
   CloseCode,
   parseClientMessage,
   type ClientMessage,
   type ServerMessage,
-} from "./protocol.js";
-import type { MongoConnection } from "./mongo.js";
+} from "./ws/protocol.js";
 
 // Largest WebSocket message we accept, in bytes (ws closes with 1009 if exceeded).
 const MAX_MESSAGE_BYTES = 16 * 1024;

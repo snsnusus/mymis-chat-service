@@ -2,12 +2,12 @@
 // and shuts everything down cleanly on Ctrl+C or a deploy. The .NET equivalent of Program.cs.
 
 import { loadConfig } from "./config.js";
-import { createPresenceStore } from "./presence.js";
-import { connectRedis } from "./redis.js";
-import { connectMongo, type MongoConnection } from "./mongo.js";
 import { createChatServer } from "./server.js";
-import { createTokenVerifier } from "./auth.js";
-import { createMessageStore } from "./messages.js";
+import { createTokenVerifier } from "./auth/token.verifier.js";
+import { createMessageStore } from "./chat/message.store.js";
+import { connectRedis } from "./infrastructure/redis.js";
+import { connectMongo, type MongoConnection } from "./infrastructure/mongo.js";
+import { createPresenceStore } from "./presence/presence.store.js";
 
 // How long a graceful shutdown may take before we force the process to exit.
 const SHUTDOWN_TIMEOUT_MS = 10_000;

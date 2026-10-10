@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { SignJWT } from "jose";
-import { createTokenVerifier } from "./auth.js";
+import { createTokenVerifier } from "../token.verifier.js";
 
 const TEST_JWT = {
   key: "test-signing-key-at-least-32-characters",

@@ -4,7 +4,7 @@ import {
   encodeCursor,
   decodeCursor,
   type MessageDocument,
-} from "./messages.js";
+} from "../message.store.js";
 
 function docBuilder(
   roomId: string,

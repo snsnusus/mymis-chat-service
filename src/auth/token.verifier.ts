@@ -4,7 +4,7 @@
 
 import { errors, jwtVerify } from "jose";
 import { z } from "zod";
-import type { Config } from "./config.js";
+import type { Config } from "../config.js";
 
 // Who the token says the caller is, in the shape the rest of the service uses.
 export interface AuthenticatedUser {

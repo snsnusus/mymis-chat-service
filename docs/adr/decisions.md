@@ -108,3 +108,12 @@
 **Context:** The service is ES modules + TypeScript.
 **Decision:** Vitest: runs TS and ESM natively (Jest needs extra transform/ESM configuration), and it's the same runner as the portal. Tests live next to the code as `*.test.ts`; `tsconfig.build.json` excludes them from the production build, while `tsconfig.json` keeps them type-checked and linted.
 **Consequences:** One test runner across the portal and the chat service.
+
+## ADR-0013: Feature-based source layout
+
+**Status:** Accepted (2026-10-11)
+**Context:** All source files sat flat in `src/`, and `server.ts` had grown to handle the Express app, the upgrade, the heartbeat, the socket registry, the AUTH state machine and every message handler.
+**Decision:** Group by feature (`auth/`, `presence/`, `chat/`) plus the two transports (`http/`, `ws/`) and `infrastructure/` (database connections). Files carry role suffixes (`message.store.ts`, `chat.routes.ts`, `token.verifier.ts`), the same convention as the portal. `index.ts` stays the composition root.
+**Alternatives:** Layered MVC (`routes/`, `controllers/`, `services/`, `models/`), common in Express tutorials and closest to `mymis-api`; rejected because most of this service isn't REST controllers, and one feature would be spread across several folders.
+**Consequences:** A feature's code lives in one folder. `server.ts` is split into `http/` and `ws/` modules in a second step, after the server tests exist, so the black-box tests guard that refactor.
+Tests live in a `__tests__/` folder inside the feature they test (e.g. `chat/__tests__/room.test.ts`); whole-server tests and shared test helpers live in `src/__tests__/`. The build excludes `src/**/__tests__/**`.
