@@ -47,12 +47,22 @@ Each milestone ends with something runnable and committed. Check items off as yo
 - [x] Load history from REST (cursor paging, "Load older messages", refetch after reconnect)
 - [x] Remove the old chat socket from `server/`; `server/` + `redis:start` kept for OTP only, on port 4100 (ADR-0008)
 
-## M6: Later
+## M6: Deploy
 
-- [ ] Deploy (AWS ECS or Azure), secrets management
+- [x] Data stores: MongoDB Atlas M0 + Upstash Redis (AWS Singapore)
+- [x] Multi-stage Dockerfile (0 high/critical vulnerabilities), image in ECR with immutable commit tags
+- [x] Secrets in SSM Parameter Store; service on ECS Express Mode (Fargate + ALB, max 1 task)
+- [x] Portal on Vercel (`mymis-portal.vercel.app`): SPA rewrite, production chat URLs, CORS in mymis-api and chat service
+- [x] CI/CD: GitHub Actions deploys on push to master via OIDC (no stored AWS keys)
+
+## Backlog
+
+- [ ] Two-user end-to-end chat test in production (needs a second employee in Supabase)
+- [ ] Merge the portal sidebar logo fix (import the logo files so the production build includes them)
+- [ ] M6 docs: ADR for the hosting choice, README deployment section
 - [ ] Redis pub/sub for multi-instance scale-out
 - [ ] Rebuild OTP in `mymis-api`, then delete portal `server/`, `redis:start` and `my-redis`
 - [ ] Update resume Node entry and cover letter when M4 is done
 - [ ] Unread counts / notifications for conversations that aren't open
 - [ ] Directory beyond 50 employees (search, or a dedicated endpoint)
-- [ ] Allow messaging yourself (self-notes): rooms like `1-1` in `roomIdFor`/`parseRoomId`, flip the three same-user tests, remove the self-message check in `server.ts`, de-duplicate recipients in `sendToUsers` (otherwise a self-message is delivered twice)
+- [ ] Allow messaging yourself (self-notes): rooms like `1-1` in `roomIdFor`/`parseRoomId`, flip the three same-user tests, remove the self-message check in `chat/chat.handlers.ts`, de-duplicate recipients in `sendToUsers` (otherwise a self-message is delivered twice)
