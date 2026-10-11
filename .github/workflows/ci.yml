@@ -90,19 +90,6 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v5
 
-      - name: Debug OIDC claims (temporary)
-        uses: actions/github-script@v7
-        with:
-          script: |
-            // Ask GitHub for the same kind of token AWS receives, then print only
-            // its sub and aud claims (never the token itself: it's a credential).
-            const token = await core.getIDToken("sts.amazonaws.com");
-            const payload = JSON.parse(
-              Buffer.from(token.split(".")[1], "base64url").toString()
-            );
-            core.info(`sub: ${payload.sub}`);
-            core.info(`aud: ${payload.aud}`);
-
       - name: Configure AWS credentials (OIDC, no stored keys)
         uses: aws-actions/configure-aws-credentials@v5
         with:
