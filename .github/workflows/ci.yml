@@ -11,7 +11,9 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded runs for PRs only. On master, a newer push must not cancel
+  # a deployment that's already halfway through.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
@@ -62,3 +64,76 @@ jobs:
 
       - name: Integration tests
         run: npm run test:integration
+
+  deploy:
+    name: Deploy to AWS (ECS Express Mode)
+    # Only after both test jobs pass, and only for pushes to master (never for PRs).
+    needs: [verify, integration]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # id-token: write lets this job request a GitHub OIDC token (for AWS).
+    permissions:
+      id-token: write
+      contents: read
+    # One deployment at a time; a newer one waits instead of cancelling the running one.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      AWS_REGION: ap-southeast-1
+      AWS_ACCOUNT_ID: "452838988536"
+      ECR_REPOSITORY: mymis-chat-service
+      ECS_CLUSTER: default
+      ECS_SERVICE: mymis-chat-service-a4b5
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Configure AWS credentials (OIDC, no stored keys)
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/github-actions-mymis-chat-service
+          role-session-name: mymis-chat-service-deploy-${{ github.run_id }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        id: image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          IMAGE="$REGISTRY/$ECR_REPOSITORY:${GITHUB_SHA::7}"
+          docker build --provenance=false --sbom=false -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "uri=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to ECS Express Mode
+        uses: aws-actions/amazon-ecs-deploy-express-service@v1
+        with:
+          cluster: ${{ env.ECS_CLUSTER }}
+          service-name: ${{ env.ECS_SERVICE }}
+          image: ${{ steps.image.outputs.uri }}
+          execution-role-arn: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/ecsTaskExecutionRole
+          infrastructure-role-arn: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/ecsInfrastructureRoleForExpressServices
+          container-port: 4000
+          health-check-path: /health
+          cpu: "256"
+          memory: "512"
+          min-task-count: 1
+          max-task-count: 1
+          environment-variables: |
+            [
+              {"name": "ALLOWED_ORIGINS", "value": "http://localhost:3000,https://mymis-portal.vercel.app"},
+              {"name": "JWT_ISSUER", "value": "MyMIS.Api"},
+              {"name": "JWT_AUDIENCE", "value": "MyMIS.Client"}
+            ]
+          secrets: |
+            [
+              {"name": "JWT_KEY", "valueFrom": "arn:aws:ssm:ap-southeast-1:452838988536:parameter/mymis/chat-service/JWT_KEY"},
+              {"name": "MONGO_URL", "valueFrom": "arn:aws:ssm:ap-southeast-1:452838988536:parameter/mymis/chat-service/MONGO_URL"},
+              {"name": "REDIS_URL", "valueFrom": "arn:aws:ssm:ap-southeast-1:452838988536:parameter/mymis/chat-service/REDIS_URL"}
+            ]
