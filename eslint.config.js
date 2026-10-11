@@ -39,7 +39,7 @@ export default defineConfig(
   //    turn type-aware rules off for them, and tell ESLint they run in Node
   //    so built-ins like process and console aren't reported as undefined.
   {
-    files: ["**/*.js"],
+    files: ["**/*.js", "vitest.config.ts"],
     extends: [tseslint.configs.disableTypeChecked],
     languageOptions: {
       globals: globals.node,
