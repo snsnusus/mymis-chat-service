@@ -46,9 +46,16 @@ export function createHttpApp({
     app.use(router);
   }
 
+  // Any request no route matched: JSON 404 instead of Express's HTML "Cannot GET /".
+  app.use((_req, res) => {
+    res.status(404).json({ error: "not_found" });
+  });
+
   // Registered last: catches errors thrown (or rejected) in any route above
   // and answers with JSON instead of Express's default HTML error page.
-  const errorHandler: ErrorRequestHandler = (error, _req, res) => {
+  // It MUST declare 4 parameters: Express recognizes error handlers only by their
+  // parameter count. With 3, it runs as normal middleware (that was a bug).
+  const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     console.error("[http] unhandled error:", error);
     res.status(500).json({ error: "internal_error" });
   };

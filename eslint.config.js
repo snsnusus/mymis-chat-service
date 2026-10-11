@@ -1,4 +1,5 @@
 // @ts-check
+/// <reference types="node" />
 
 import eslint from "@eslint/js";
 import { defineConfig } from "eslint/config";
@@ -51,6 +52,18 @@ export default defineConfig(
     rules: {
       // Always === / !==, never == / != (which do surprising type conversions: 0 == '' is true).
       eqeqeq: ["error", "always"],
+
+      // Names starting with _ are intentionally unused, the same convention TypeScript's
+      // noUnusedParameters follows. Needed e.g. for Express's `next` in an error handler,
+      // which must be declared (4 parameters) for Express to recognize the handler at all.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
     },
   },
 );
