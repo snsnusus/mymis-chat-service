@@ -8,7 +8,12 @@ const envSchema = z
     PORT: z.coerce.number().int().min(1).max(65535).default(4000),
     HEARTBEAT_INTERVAL_MS: z.coerce.number().int().min(1000).default(30_000),
     REDIS_URL: z.url(),
-    MONGO_URL: z.url(),
+    MONGO_URL: z
+      .string()
+      .regex(
+        /^mongodb(\+srv)?:\/\//,
+        "must start with mongodb:// or mongodb+srv://",
+      ),
     ALLOWED_ORIGINS: z
       .string()
       .transform((str) =>
