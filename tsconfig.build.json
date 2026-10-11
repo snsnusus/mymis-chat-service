@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.json",
   // Test files AND test helpers stay out of the production build.
-  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/test/**"]
+  "exclude": ["node_modules", "dist", "src/**/__tests__/**"]
 }
