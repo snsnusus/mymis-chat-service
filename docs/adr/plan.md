@@ -29,15 +29,15 @@ Each milestone ends with something runnable and committed. Check items off as yo
 
 ## M3: Rooms + MongoDB persistence
 
-- [ ] Room id helper + membership check
-- [ ] `SEND_MESSAGE` -> validate (zod) -> save -> deliver to the two participants
-- [ ] History REST endpoint with cursor paging; index on `(roomId, createdAt)`
+- [x] Room id helper + membership check
+- [x] `SEND_MESSAGE` -> validate (zod) -> save -> deliver to the two participants
+- [x] History REST endpoint with cursor paging; index on `(roomId, createdAt)`
 
 ## M4: Tests + CI
 
-- [ ] Vitest/Supertest + ws client tests, Testcontainers for Redis/Mongo
-- [ ] GitHub Actions on `pull_request`
-- [ ] README with architecture diagram and run instructions
+- [x] Vitest/Supertest + ws client tests, Testcontainers for Redis/Mongo
+- [x] GitHub Actions on `pull_request`
+- [x] README with architecture diagram and run instructions
 
 ## M5: Switch the portal (separate, deliberate step)
 
