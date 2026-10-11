@@ -13,27 +13,30 @@ import {
 
 export const TEST_ORIGIN = "http://test.local";
 
-// A fixed, valid Config. The URLs and key are never used: the fakes replace Redis,
-// MongoDB and token verification.
-const testConfig: Config = {
-  nodeEnv: "test",
-  port: 0,
-  heartbeatIntervalMs: 60_000, // long, so heartbeats never interfere with a test
-  redisUrl: "redis://unused",
-  mongoUrl: "mongodb://unused",
-  allowedOrigins: [TEST_ORIGIN],
-  jwt: {
-    key: "unused-in-tests-the-verifier-is-faked",
-    issuer: "test",
-    audience: "test",
-  },
-};
+// A complete, valid Config for tests. Pass overrides for the fields a test cares about,
+// e.g. makeTestConfig({ redisUrl: container.url }).
+export function makeTestConfig(overrides: Partial<Config> = {}): Config {
+  return {
+    nodeEnv: "test",
+    port: 0,
+    heartbeatIntervalMs: 60_000,
+    redisUrl: "redis://unused",
+    mongoUrl: "mongodb://unused",
+    allowedOrigins: [TEST_ORIGIN],
+    jwt: {
+      key: "unused-in-tests-the-verifier-is-faked",
+      issuer: "test",
+      audience: "test",
+    },
+    ...overrides,
+  };
+}
 
 // overrides: replace any dependency for one test, e.g. a message store you keep a
 // reference to, or a config with a short heartbeat interval.
 export async function startTestServer(overrides: Partial<ChatServerDeps> = {}) {
   const deps: ChatServerDeps = {
-    config: testConfig,
+    config: makeTestConfig(),
     presence: createFakePresenceStore(),
     verifyToken: fakeVerifyToken,
     mongo: { isAvailable: () => Promise.resolve(true) },

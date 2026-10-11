@@ -14,7 +14,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run",
+    "test": "vitest run --exclude \"**/*.integration.test.ts\"",
+    "test:integration": "vitest run integration.test",
     "test:watch": "vitest",
     "prebuild": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\""
   },
@@ -26,6 +27,7 @@
     "@types/ws": "^8.18.2",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
+    "testcontainers": "^12.2.0",
     "tsx": "^4.23.15",
     "typescript": "~6.0",
     "typescript-eslint": "^8.71.1",
