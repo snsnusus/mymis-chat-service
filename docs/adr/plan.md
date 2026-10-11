@@ -41,15 +41,18 @@ Each milestone ends with something runnable and committed. Check items off as yo
 
 ## M5: Switch the portal (separate, deliberate step)
 
-- [ ] Add `VITE_CHAT_WS_URL`; send `AUTH` after connect
-- [ ] Merge the two sockets into the context
-- [ ] Load history from REST
-- [ ] Delete `server/` and `redis:start`; keep OTP until .NET version exists
+- [x] Add `VITE_CHAT_WS_URL` / `VITE_CHAT_API_URL` (chat off when unset); send `AUTH` after connect
+- [x] Merge the two sockets into the context (presence, live messages, reconnect with backoff, refresh on 4002)
+- [x] Directory lists real employees (`/api/Employees/lookup`) instead of json-server users
+- [x] Load history from REST (cursor paging, "Load older messages", refetch after reconnect)
+- [x] Remove the old chat socket from `server/`; `server/` + `redis:start` kept for OTP only, on port 4100 (ADR-0008)
 
 ## M6: Later
 
 - [ ] Deploy (AWS ECS or Azure), secrets management
 - [ ] Redis pub/sub for multi-instance scale-out
-- [ ] Rebuild OTP in `mymis-api`
+- [ ] Rebuild OTP in `mymis-api`, then delete portal `server/`, `redis:start` and `my-redis`
 - [ ] Update resume Node entry and cover letter when M4 is done
+- [ ] Unread counts / notifications for conversations that aren't open
+- [ ] Directory beyond 50 employees (search, or a dedicated endpoint)
 - [ ] Allow messaging yourself (self-notes): rooms like `1-1` in `roomIdFor`/`parseRoomId`, flip the three same-user tests, remove the self-message check in `server.ts`, de-duplicate recipients in `sendToUsers` (otherwise a self-message is delivered twice)

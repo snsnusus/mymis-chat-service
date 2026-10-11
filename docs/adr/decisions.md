@@ -76,11 +76,13 @@
 **Status:** Accepted
 **Context:** OTP is unrelated to chat and its verify path is broken today (reads a cache never written).
 **Decision:** Remains in portal `server/` for now; later rebuilt in `mymis-api` beside the EmployeePhone module.
+**Update (2026-10-11, M5):** `server/` is now OTP only. It moved from port 4000 to **4100** (4000 belongs to the chat service), and the portal calls it through `otpClient`. `sendOtp` still stores codes in the portal's `my-redis` (6379), so `npm run server` and `npm run redis:start` stay until OTP is rebuilt in `mymis-api`.
 
 ## ADR-0009: Portal untouched for now
 
-**Status:** Accepted
+**Status:** Superseded by ADR-0014 (2026-10-11, M5 done)
 **Decision:** No portal edits until the service passes its tests. Cleanup (switch to `VITE_CHAT_WS_URL`, send `AUTH` after connect, merge the two sockets, delete `server/` and `redis:start`) is Milestone 5.
+**Outcome:** Done in M5, except that `server/` and `redis:start` were kept for OTP (see ADR-0008 update).
 
 ## ADR-0010: Pin TypeScript to 6.0
 
@@ -117,3 +119,19 @@
 **Alternatives:** Layered MVC (`routes/`, `controllers/`, `services/`, `models/`), common in Express tutorials and closest to `mymis-api`; rejected because most of this service isn't REST controllers, and one feature would be spread across several folders.
 **Consequences:** A feature's code lives in one folder. `server.ts` is split into `http/` and `ws/` modules in a second step, after the server tests exist, so the black-box tests guard that refactor.
 Tests live in a `__tests__/` folder inside the feature they test (e.g. `chat/__tests__/room.test.ts`); whole-server tests and shared test helpers live in `src/__tests__/`. The build excludes `src/**/__tests__/**`.
+
+## ADR-0014: Portal chat integration
+
+**Status:** Accepted (2026-10-11, M5)
+**Context:** The portal opened two unauthenticated sockets (one in a context, one in the user directory), trusted a client-sent `userId`, stored history in json-server, and listed json-server users whose ids (`"ABC123"`) never match the token's `sub` (employee ids).
+**Decision:**
+
+- **One socket per tab**, owned by `WebSocketProvider` (inside `AuthProvider`). It sends `AUTH` on open, waits for `AUTH_OK`, then requests presence. Presence (`onlineIds`), live messages and `sendMessage(recipientId, text)` are exposed through the context.
+- **Reconnect** with exponential backoff (1 s doubling to 30 s, plus jitter); the backoff resets only on `AUTH_OK`. `4001` stops; `4002` and every other close reconnect, and each attempt first gets a valid token (refreshing an expired one).
+- **One token refresh for HTTP and WebSocket:** `refreshAccessToken()` in `api/client.ts` is single-flight (concurrent callers share one Promise), used by the axios 401 interceptor on `apiClient` and `chatClient` and by the socket. Required because mymis-api rotates refresh tokens.
+- **History** through `GET /conversations/:roomId/messages` with React Query `useInfiniteQuery` (pages = cursor pages, "Load older messages"). Live and history messages are merged by `id` and sorted by `createdAt`, then `id`. Chat queries are invalidated on every `AUTH_OK`, so messages missed while disconnected appear after reconnecting.
+- **No optimistic display:** a sent message appears when the server echoes it as `MESSAGE`, so the UI only shows saved messages.
+- **Directory** lists employees from `GET /api/Employees/lookup?limit=50`.
+- **Feature switch:** chat is enabled only when `VITE_CHAT_WS_URL` and `VITE_CHAT_API_URL` are set; production leaves them unset until the service is deployed (M6).
+  **Alternatives:** Keep a separate directory socket (two connections per tab, duplicated presence state). Optimistic messages (instant, but needs pending/failed states and reconciliation). A new paged employees endpoint for the directory (not needed while the organization is under 50 employees).
+  **Consequences:** The portal duplicates the wire types (`src/models/chat.model.ts`); protocol changes must update both repos. The directory shows at most 50 employees, so a larger organization needs search or a dedicated endpoint. No unread counts or notifications for conversations that aren't open.
