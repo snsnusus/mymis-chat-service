@@ -26,6 +26,9 @@ export function createHttpApp({
 }: HttpAppDeps): Express {
   const app = express();
 
+  // Don't advertise the framework (removes the "X-Powered-By: Express" header).
+  app.disable("x-powered-by");
+
   // Lets allowed browser origins (the portal) call these routes; answers preflight requests.
   app.use(cors({ origin: config.allowedOrigins }));
 
