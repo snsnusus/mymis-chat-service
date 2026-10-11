@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isRoomMember, parseRoomId, roomIdFor } from "../rooms.js";
+import { isRoomMember, parseRoomId, roomIdFor } from "../room.js";
 
 describe("roomIdFor", () => {
   it("puts the smaller id first", () => {

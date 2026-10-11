@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ChatMessage } from "../ws/protocol.js";
+import { type ChatMessage } from "../chat/chat.model.js";
 import { createFakeMessageStore } from "./helpers/fakes.js";
 import {
   connectAs,

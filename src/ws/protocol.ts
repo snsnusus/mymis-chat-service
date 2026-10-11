@@ -1,15 +1,5 @@
 import { z } from "zod";
-
-export interface ChatMessage {
-  id: string;
-  roomId: string;
-  senderId: string;
-  recipientId: string;
-  text: string;
-  createdAt: string;
-}
-
-export const MAX_MESSAGE_LENGTH = 2000;
+import { MAX_MESSAGE_LENGTH, type ChatMessage } from "../chat/chat.model.js";
 
 export const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({

@@ -1,6 +1,6 @@
 import { ObjectId, type Collection, type Db, type Filter } from "mongodb";
 import { z } from "zod";
-import type { ChatMessage } from "../ws/protocol.js";
+import type { ChatMessage } from "./chat.model.js";
 
 export interface MessageDocument {
   _id: ObjectId;
