@@ -23,6 +23,9 @@ import {
 import { createChatRouter } from "./chat/chat.routes.js";
 import { createHttpApp } from "./http/app.js";
 
+import { startHeartbeat } from "./ws/heartbeat.js";
+import { createSocketRegistry } from "./ws/socket.registry.js";
+
 // Largest WebSocket message we accept, in bytes (ws closes with 1009 if exceeded).
 const MAX_MESSAGE_BYTES = 16 * 1024;
 
@@ -65,78 +68,8 @@ export function createChatServer(deps: ChatServerDeps): ChatServer {
     maxPayload: MAX_MESSAGE_BYTES,
   });
 
-  // Sockets that completed AUTH. Presence is only shared with these: wss.clients also
-  // contains sockets that haven't authenticated yet, and they must not learn who's online.
-  const authenticatedSockets = new Set<WebSocket>();
-
-  // Sends one message to every AUTHENTICATED open socket (presence changes only).
-  function broadcast(message: ServerMessage): void {
-    const payload = JSON.stringify(message);
-    for (const client of authenticatedSockets) {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(payload);
-      }
-    }
-  }
-
-  // Every open, authenticated socket of each user (one per tab or device).
-  // Used to deliver a chat message to exactly the people in the conversation.
-  const socketsByUser = new Map<string, Set<WebSocket>>();
-
-  function trackUserSocket(userId: string, ws: WebSocket): void {
-    let sockets = socketsByUser.get(userId);
-    if (sockets === undefined) {
-      sockets = new Set();
-      socketsByUser.set(userId, sockets);
-    }
-    sockets.add(ws);
-  }
-
-  function untrackUserSocket(userId: string, ws: WebSocket): void {
-    const sockets = socketsByUser.get(userId);
-    if (sockets === undefined) {
-      return;
-    }
-    sockets.delete(ws);
-    // Remove the user's entry once their last socket is gone, so the map
-    // only ever holds connected users (no slow memory leak of empty sets).
-    if (sockets.size === 0) {
-      socketsByUser.delete(userId);
-    }
-  }
-
-  // Sends one message to every open socket of the given users.
-  // Serialized once, then sent to each socket.
-  function sendToUsers(userIds: string[], message: ServerMessage): void {
-    const payload = JSON.stringify(message);
-    for (const userId of userIds) {
-      // ?? [] : a user with no sockets (offline) simply gets nothing.
-      for (const socket of socketsByUser.get(userId) ?? []) {
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(payload);
-        }
-      }
-    }
-  }
-
-  // ── Heartbeat: covers ALL sockets, authenticated or not ──
-  const isAlive = new WeakMap<WebSocket, boolean>();
-
-  const heartbeat = setInterval(() => {
-    for (const client of wss.clients) {
-      if (isAlive.get(client) === false) {
-        console.warn("[ws] heartbeat missed, terminating connection");
-        client.terminate();
-        continue;
-      }
-      isAlive.set(client, false);
-      client.ping();
-    }
-  }, config.heartbeatIntervalMs);
-
-  wss.on("close", () => {
-    clearInterval(heartbeat);
-  });
+  const registry = createSocketRegistry();
+  const heartbeat = startHeartbeat(wss, config.heartbeatIntervalMs);
 
   // ── Upgrade: origin check before accepting ──
   httpServer.on("upgrade", (request, socket, head) => {
@@ -157,10 +90,7 @@ export function createChatServer(deps: ChatServerDeps): ChatServer {
   wss.on("connection", (ws: WebSocket) => {
     console.log(`[ws] client connected (total: ${wss.clients.size})`);
 
-    isAlive.set(ws, true);
-    ws.on("pong", () => {
-      isAlive.set(ws, true);
-    });
+    heartbeat.track(ws);
 
     // ── Per-connection state ──
     // null until AUTH succeeds. This is the socket's whole state machine:
@@ -207,8 +137,7 @@ export function createChatServer(deps: ChatServerDeps): ChatServer {
 
       clearTimeout(authTimer);
       user = authedUser;
-      authenticatedSockets.add(ws);
-      trackUserSocket(authedUser.userId, ws);
+      registry.add(authedUser.userId, ws);
 
       // Close the socket when the token expires. Math.max guards against a token that
       // expires in the few milliseconds between verification and here.
@@ -228,7 +157,7 @@ export function createChatServer(deps: ChatServerDeps): ChatServer {
       send(ws, { type: "AUTH_OK", userId: authedUser.userId });
 
       if (cameOnline) {
-        broadcast({
+        registry.broadcast({
           type: "USER_STATUS_CHANGE",
           userId: authedUser.userId,
           status: "online",
@@ -300,7 +229,7 @@ export function createChatServer(deps: ChatServerDeps): ChatServer {
           // message was saved (with its server-assigned id and time) and keeps their other
           // tabs in sync. If the recipient is offline, the message waits in MongoDB
           // and comes back through the history endpoint (Step 5).
-          sendToUsers([sender.userId, recipientId], {
+          registry.sendToUsers([sender.userId, recipientId], {
             type: "MESSAGE",
             message: toChatMessage(saved),
           });
@@ -345,20 +274,19 @@ export function createChatServer(deps: ChatServerDeps): ChatServer {
       // (clearTimeout(undefined) is a harmless no-op, so no check is needed.)
       clearTimeout(authTimer);
       clearTimeout(expiryTimer);
-      authenticatedSockets.delete(ws);
 
       const closedUser = user;
       if (closedUser === null) {
         return; // never authenticated, so it was never counted
       }
 
-      untrackUserSocket(closedUser.userId, ws);
+      registry.remove(closedUser.userId, ws);
 
       presence
         .removeConnection(closedUser.userId)
         .then((wentOffline) => {
           if (wentOffline) {
-            broadcast({
+            registry.broadcast({
               type: "USER_STATUS_CHANGE",
               userId: closedUser.userId,
               status: "offline",
