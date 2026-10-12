@@ -114,6 +114,31 @@ export function createFakeMessageStore(): MessageStore & {
       const hasMore = page.length > limit;
       return Promise.resolve({ documents: page.slice(0, limit), hasMore });
     },
+
+    // In-memory version of the real pipeline: my messages, newest first,
+    // keep the latest per room, then take `limit`.
+    findConversations(
+      userId: string,
+      limit: number,
+    ): Promise<MessageDocument[]> {
+      const newestFirst = documents
+        .filter(
+          (document) =>
+            document.senderId === userId || document.recipientId === userId,
+        )
+        .sort(compareNewestFirst);
+
+      // The first message seen for each room is its latest, because of the sort above.
+      const latestPerRoom = new Map<string, MessageDocument>();
+      for (const document of newestFirst) {
+        if (!latestPerRoom.has(document.roomId)) {
+          latestPerRoom.set(document.roomId, document);
+        }
+      }
+
+      return Promise.resolve([...latestPerRoom.values()].slice(0, limit));
+    },
+
     all(): MessageDocument[] {
       return [...documents]; // a copy, so tests can't modify the store's array
     },
