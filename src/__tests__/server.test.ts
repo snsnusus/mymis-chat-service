@@ -7,6 +7,7 @@ import {
   type TestClient,
 } from "./helpers/test-client.js";
 import { startTestServer, type TestServer } from "./helpers/test-server.js";
+import type { ConversationSummary } from "../chat/chat.model.js";
 
 // Gives in-flight messages a moment to arrive, so drain() clears everything from setup.
 // Needed because a broadcast can land just after the await that triggered it.
@@ -28,6 +29,10 @@ async function sendMessage(
 interface HistoryResponse {
   messages: ChatMessage[];
   nextCursor: string | null;
+}
+
+interface ConversationsResponse {
+  conversations: ConversationSummary[];
 }
 
 describe("chat server", () => {
@@ -424,6 +429,70 @@ describe("chat server", () => {
         "first",
       ]);
       expect(secondPage.nextCursor).toBeNull();
+    });
+
+    it("returns 401 for conversations without a token", async () => {
+      // Act
+      const res = await fetch(`${server.httpUrl}/conversations`);
+
+      // Assert
+      const body: unknown = await res.json();
+      expect(res.status).toBe(401);
+      expect(body).toEqual({ error: "unauthorized" });
+    });
+
+    it("returns 400 for an invalid conversations limit", async () => {
+      // Act
+      const res = await fetch(`${server.httpUrl}/conversations?limit=0`, {
+        headers: authHeader("1"),
+      });
+
+      // Assert
+      const body: unknown = await res.json();
+      expect(res.status).toBe(400);
+      expect(body).toEqual({ error: "invalid_query" });
+    });
+
+    it("returns the caller's conversations newest first", async () => {
+      // Arrange: fresh user ids, so messages from other tests can't show up here
+      const alice = await connectAs(server.wsUrl, "21");
+      await sendMessage(alice, "22", "first");
+      await sendMessage(alice, "23", "second");
+
+      // Act
+      const res = await fetch(`${server.httpUrl}/conversations`, {
+        headers: authHeader("21"),
+      });
+
+      // Assert
+      const body = (await res.json()) as ConversationsResponse;
+      expect(res.status).toBe(200);
+      expect(
+        body.conversations.map((conversation) => conversation.roomId),
+      ).toEqual(["21-23", "21-22"]);
+    });
+
+    it("reports the other participant from each side", async () => {
+      // Arrange
+      const alice = await connectAs(server.wsUrl, "31");
+      await sendMessage(alice, "32", "Hello!");
+
+      // Act: the same conversation, fetched by each participant
+      // Act: the same conversation, fetched by each participant
+      const aliceRes = await fetch(`${server.httpUrl}/conversations`, {
+        headers: authHeader("31"),
+      });
+      const aliceBody = (await aliceRes.json()) as ConversationsResponse;
+      const bobRes = await fetch(`${server.httpUrl}/conversations`, {
+        headers: authHeader("32"),
+      });
+      const bobBody = (await bobRes.json()) as ConversationsResponse;
+
+      // Assert
+      expect(aliceRes.status).toBe(200);
+      expect(bobRes.status).toBe(200);
+      expect(aliceBody.conversations[0]?.otherUserId).toBe("32");
+      expect(bobBody.conversations[0]?.otherUserId).toBe("31");
     });
   });
 });
