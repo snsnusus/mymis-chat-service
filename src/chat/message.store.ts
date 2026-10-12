@@ -1,6 +1,6 @@
 import { ObjectId, type Collection, type Db, type Filter } from "mongodb";
 import { z } from "zod";
-import type { ChatMessage } from "./chat.model.js";
+import type { ChatMessage, ConversationSummary } from "./chat.model.js";
 
 export interface MessageDocument {
   _id: ObjectId;
@@ -38,6 +38,15 @@ export function createMessageStore(db: Db) {
         // Equality (roomId) first, then the sort fields: newest first, _id breaking ties.
         { roomId: 1, createdAt: -1, _id: -1 },
         { name: "roomId_createdAt_id" }, // an explicit, readable name instead of the generated one
+      );
+      // For findConversations: find a user's messages, newest first, from either side.
+      await messages.createIndex(
+        { senderId: 1, createdAt: -1 },
+        { name: "senderId_createdAt" },
+      );
+      await messages.createIndex(
+        { recipientId: 1, createdAt: -1 },
+        { name: "recipientId_createdAt" },
       );
     },
 
@@ -87,6 +96,40 @@ export function createMessageStore(db: Db) {
         hasMore,
       };
     },
+
+    // The latest message of each conversation the user is in, newest conversation first.
+    // One document per room, so the result is "my conversations" with their previews.
+    async findConversations(
+      userId: string,
+      limit: number,
+    ): Promise<MessageDocument[]> {
+      // aggregate() runs a pipeline: each stage takes the documents from the stage
+      // before it and passes its output to the next, like a chain of LINQ calls.
+      return messages
+        .aggregate<MessageDocument>([
+          // 1. Only messages I sent or received. (LINQ: Where)
+          { $match: { $or: [{ senderId: userId }, { recipientId: userId }] } },
+
+          // 2. Newest first, _id breaking ties, the same order as findHistory. (OrderByDescending)
+          { $sort: { createdAt: -1, _id: -1 } },
+
+          // 3. One group per room, keeping the FIRST message of each group.
+          //    The input is sorted newest first, so "first" means "latest". (GroupBy + First)
+          //    $$ROOT is the whole current document.
+          { $group: { _id: "$roomId", lastMessage: { $first: "$$ROOT" } } },
+
+          // 4. $group outputs { _id: roomId, lastMessage: {...} }. Promote lastMessage to
+          //    be the document itself, so the result is MessageDocument-shaped again. (Select)
+          { $replaceRoot: { newRoot: "$lastMessage" } },
+
+          // 5. $group doesn't keep any order, so sort the rooms by their latest message.
+          { $sort: { createdAt: -1, _id: -1 } },
+
+          // 6. Only the first `limit` conversations. (Take)
+          { $limit: limit },
+        ])
+        .toArray();
+    },
   };
 }
 
@@ -103,6 +146,18 @@ export function toChatMessage(document: MessageDocument): ChatMessage {
     recipientId: document.recipientId,
     text: document.text,
     createdAt: document.createdAt.toISOString(),
+  };
+}
+
+export function toConversationSummary(
+  document: MessageDocument,
+  userId: string,
+): ConversationSummary {
+  return {
+    roomId: document.roomId,
+    otherUserId:
+      document.senderId === userId ? document.recipientId : document.senderId,
+    lastMessage: toChatMessage(document),
   };
 }
 

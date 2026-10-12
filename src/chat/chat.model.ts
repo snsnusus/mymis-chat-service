@@ -11,3 +11,10 @@ export interface ChatMessage {
   text: string;
   createdAt: string;
 }
+
+// One row of the conversation list
+export interface ConversationSummary {
+  roomId: string;
+  otherUserId: string;
+  lastMessage: ChatMessage;
+}

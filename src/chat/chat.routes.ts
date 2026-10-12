@@ -8,6 +8,7 @@ import {
   decodeCursor,
   encodeCursor,
   toChatMessage,
+  toConversationSummary,
   type HistoryCursor,
   type MessageStore,
 } from "./message.store.js";
@@ -17,6 +18,10 @@ import { isRoomMember, parseRoomId } from "./room.js";
 const historyQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(30),
   before: z.string().min(1).optional(),
+});
+
+const conversationsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
 export interface ChatRouterDeps {
@@ -81,6 +86,33 @@ export function createChatRouter({
     res.json({
       messages: documents.map(toChatMessage),
       nextCursor: hasMore && oldest !== undefined ? encodeCursor(oldest) : null,
+    });
+  });
+
+  router.get("/conversations", async (req, res) => {
+    const auth = await authenticateRequest(req, verifyToken);
+    if (!auth.ok) {
+      res.status(401).json({
+        error: auth.reason === "expired" ? "token_expired" : "unauthorized",
+      });
+      return;
+    }
+
+    const query = conversationsQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      res.status(400).json({ error: "invalid_query" });
+      return;
+    }
+
+    const conversations = await messageStore.findConversations(
+      auth.user.userId,
+      query.data.limit,
+    );
+
+    res.json({
+      conversations: conversations.map((convo) =>
+        toConversationSummary(convo, auth.user.userId),
+      ),
     });
   });
 

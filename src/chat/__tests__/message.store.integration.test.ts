@@ -209,4 +209,171 @@ describe("message store (real MongoDB)", () => {
       ["_id", -1],
     ]);
   });
+
+  describe("findConversations", () => {
+    it("returns one entry per conversation with its latest message", async () => {
+      // Arrange
+      await store.insert({
+        roomId: "1-2",
+        senderId: "1",
+        recipientId: "2",
+        text: "Hello!",
+      });
+      await store.insert({
+        roomId: "1-3",
+        senderId: "1",
+        recipientId: "3",
+        text: "Hi!",
+      });
+      await store.insert({
+        roomId: "1-2",
+        senderId: "1",
+        recipientId: "2",
+        text: "Hey, what's up?",
+      });
+
+      // Act
+      const result = await store.findConversations("1", 20);
+
+      // Assert
+      expect(result).toHaveLength(2); // 3 messages, 2 conversations
+
+      const room12 = result.find((message) => message.roomId === "1-2");
+      expect(room12?.text).toBe("Hey, what's up?");
+    });
+
+    it("orders conversations by their latest message, newest first", async () => {
+      // Arrange
+      await store.insert({
+        roomId: "1-2",
+        senderId: "1",
+        recipientId: "2",
+        text: "Hello!",
+      });
+      await store.insert({
+        roomId: "1-3",
+        senderId: "1",
+        recipientId: "3",
+        text: "Hi!",
+      });
+      await store.insert({
+        roomId: "1-2",
+        senderId: "1",
+        recipientId: "2",
+        text: "Hey, what's up?",
+      });
+
+      // Act
+      const result = await store.findConversations("1", 20);
+
+      // Assert
+      expect(result.map((message) => message.roomId)).toEqual(["1-2", "1-3"]);
+    });
+
+    it("includes conversations where the user only received messages", async () => {
+      // Arrange: user 2 messages user 1, who never replies
+      await store.insert({
+        roomId: "1-2",
+        senderId: "2",
+        recipientId: "1",
+        text: "Hello!",
+      });
+
+      // Act
+      const result = await store.findConversations("1", 20);
+
+      // Assert: the conversation shows up even though user 1 never sent anything
+      expect(result.map((message) => message.roomId)).toEqual(["1-2"]);
+    });
+
+    it("excludes conversations the user is not part of", async () => {
+      // Arrange: one conversation with user 1, one between two other users
+      await store.insert({
+        roomId: "1-2",
+        senderId: "1",
+        recipientId: "2",
+        text: "Hello!",
+      });
+      await store.insert({
+        roomId: "2-3",
+        senderId: "2",
+        recipientId: "3",
+        text: "Not for user 1",
+      });
+
+      // Act
+      const result = await store.findConversations("1", 20);
+
+      // Assert: only the room user 1 is in
+      expect(result.map((message) => message.roomId)).toEqual(["1-2"]);
+    });
+
+    it("returns at most limit conversations", async () => {
+      // Arrange: three conversations, written oldest to newest
+      await store.insert({
+        roomId: "1-2",
+        senderId: "1",
+        recipientId: "2",
+        text: "first",
+      });
+      await store.insert({
+        roomId: "1-3",
+        senderId: "1",
+        recipientId: "3",
+        text: "second",
+      });
+      await store.insert({
+        roomId: "1-4",
+        senderId: "1",
+        recipientId: "4",
+        text: "third",
+      });
+
+      // Act
+      const result = await store.findConversations("1", 2);
+
+      // Assert: the two NEWEST conversations, so the limit is applied after sorting
+      expect(result.map((message) => message.roomId)).toEqual(["1-4", "1-3"]);
+    });
+
+    it("returns an empty list for a user with no messages", async () => {
+      // Arrange: messages exist, but none involve user 9
+      await store.insert({
+        roomId: "1-2",
+        senderId: "1",
+        recipientId: "2",
+        text: "Hello!",
+      });
+
+      // Act
+      const result = await store.findConversations("9", 20);
+
+      // Assert
+      expect(result).toEqual([]);
+    });
+
+    it("creates the sender and recipient indexes", async () => {
+      // Arrange: ensureIndexes already ran in beforeAll; run it again to prove it's safe to repeat
+      await store.ensureIndexes();
+
+      // Act
+      const indexes = await messages().indexes();
+      const senderIndex = indexes.find(
+        (index) => index.name === "senderId_createdAt",
+      );
+      const recipientIndex = indexes.find(
+        (index) => index.name === "recipientId_createdAt",
+      );
+
+      // Assert: both exist, with their fields in the right order
+      expect(Object.entries(senderIndex?.key ?? {})).toEqual([
+        ["senderId", 1],
+        ["createdAt", -1],
+      ]);
+      expect(Object.entries(recipientIndex?.key ?? {})).toEqual([
+        ["recipientId", 1],
+        ["createdAt", -1],
+      ]);
+    });
+  });
 });
